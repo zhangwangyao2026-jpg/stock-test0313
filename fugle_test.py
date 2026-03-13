@@ -34,7 +34,7 @@ def send_telegram_msg(message):
 def get_vsa_setup(client, symbol):
     """找出 20 天內的高量陰線高點與成交量"""
     try:
-        # 修改點：補齊富果 API 要求的必填欄位，避免 Status 400 錯誤
+        # 修改點：必須包含 open, high, low, close, volume, turnover, change 這 7 個欄位
         res = client.stock.historical.candles(
             symbol=symbol, 
             timeframe='D', 
@@ -83,7 +83,7 @@ def start_monitor():
 
         # 開盤時間監控
         if "09:00" <= current_time <= "13:35":
-            print(f"--- 開始新一輪掃描 ({current_time}) ---")
+            print(f"--- 開始掃描 ({current_time}) ---")
             for symbol in WATCH_LIST:
                 # 1. 取得 VSA 基準資料
                 if symbol not in vsa_memory:
@@ -101,7 +101,7 @@ def start_monitor():
                     total_info = quote.get('total', {})
                     volume = total_info.get('tradeVolume', 0) if total_info else 0
                     
-                    # 偵錯心跳線：讓您在 GitHub Actions 日誌中確認數據有正常抓到
+                    # 偵錯心跳線：確保您能在 GitHub 日誌看到數據
                     if price:
                         print(f"偵測中... {symbol} | 現價: {price} | 目標價: {setup['high_target']}")
 
