@@ -34,8 +34,16 @@ def send_telegram_msg(message):
 def get_vsa_setup(client, symbol):
     """找出 20 天內的高量陰線高點與成交量"""
     try:
-        # 指定日線 timeframe='D'
-        res = client.stock.historical.candles(symbol=symbol, timeframe='D', fields=['open', 'close', 'high', 'volume'])
+        # 修改點：補齊富果 API 要求的必填欄位，避免 Status 400 錯誤
+        res = client.stock.historical.candles(
+            symbol=symbol, 
+            timeframe='D', 
+            fields=['open', 'high', 'low', 'close', 'volume', 'turnover', 'change']
+        )
+        
+        if not res or 'data' not in res:
+            return None
+            
         df = pd.DataFrame(res['data'])
         if df.empty: return None
         
@@ -75,11 +83,12 @@ def start_monitor():
 
         # 開盤時間監控
         if "09:00" <= current_time <= "13:35":
+            print(f"--- 開始新一輪掃描 ({current_time}) ---")
             for symbol in WATCH_LIST:
                 # 1. 取得 VSA 基準資料
                 if symbol not in vsa_memory:
                     vsa_memory[symbol] = get_vsa_setup(client, symbol)
-                    time.sleep(0.1) # 稍微緩衝避開頻率限制
+                    time.sleep(0.1) # 緩衝避開頻率限制
                 
                 setup = vsa_memory.get(symbol)
                 if not setup or setup["triggered"]: continue
@@ -88,10 +97,14 @@ def start_monitor():
                     # 2. 取得今日即時行情
                     quote = client.stock.intraday.quote(symbol=symbol)
                     price = quote.get('lastPrice')
-                    # 部分股票開盤初期 total 可能為 None
+                    
                     total_info = quote.get('total', {})
                     volume = total_info.get('tradeVolume', 0) if total_info else 0
                     
+                    # 偵錯心跳線：讓您在 GitHub Actions 日誌中確認數據有正常抓到
+                    if price:
+                        print(f"偵測中... {symbol} | 現價: {price} | 目標價: {setup['high_target']}")
+
                     if not price or not volume: continue
 
                     # 3. 判斷邏輯：突破高點 且 今日總量尚未超越當初的高量陰線 (縮量突破)
@@ -108,6 +121,8 @@ def start_monitor():
                 except Exception as e:
                     print(f"監控 {symbol} 時發生異常: {e}")
                     continue
+        else:
+            print(f"等待開盤中... 目前時間: {current_time}")
         
         # 每一分鐘輪詢一次全名單
         time.sleep(60)
